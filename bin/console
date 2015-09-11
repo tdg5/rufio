@@ -1,0 +1,8 @@
+#!/usr/bin/env ruby
+
+require "bundler/setup"
+require "rufio"
+require "rufio/io"
+require "pry"
+
+Pry.start
