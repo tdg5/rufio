@@ -1,4 +1,7 @@
 # Rufio
+[![Build Status](https://travis-ci.org/tdg5/rufio.svg?branch=master)](https://travis-ci.org/tdg5/rufio)
+[![Coverage Status](https://coveralls.io/repos/tdg5/rufio/badge.svg?branch=master&service=github)](https://coveralls.io/github/tdg5/rufio?branch=master)
+[![Code Climate](https://codeclimate.com/github/tdg5/rufio/badges/gpa.svg)](https://codeclimate.com/github/tdg5/rufio)
 
 An I/O library that prefers to store bytes in RAM up to a certain size, but will
 fall back to a [`Tempfile`][RubyDoc - Tempfile] once that size has been exceeded.
