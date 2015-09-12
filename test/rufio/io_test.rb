@@ -63,15 +63,16 @@ module Rufio
     end
 
     context "#finalize" do
-      subject { Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 50) }
+      subject { Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 5) }
 
-      should "rewind the IO" do
-        subject.open do |io|
-          chunk = "aaaa"
-          io << chunk
-          assert_equal chunk.length, io.pos
-          io.finalize
-          assert_equal 0, io.pos
+      should "rewind a tempfile backed IO" do
+        Tempfile.open(DUMMY_BASENAME) do |tmpfile|
+          subject.open do |io|
+            chunk = "aaaa" * 2
+            io << chunk
+            io.finalize
+            assert_equal 0, tmpfile.pos
+          end
         end
       end
 
@@ -163,35 +164,6 @@ module Rufio
       end
     end
 
-    context "#pos" do
-      subject { Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 30) }
-
-      should "raise IOError if the IO is not open" do
-        assert_raises(IOError) { subject.pos }
-      end
-
-      should "return the position of the IO cursor" do
-        data = "hello"
-        subject.open do |io|
-          size = 0
-          6.times do
-            io << data
-            size += data.length
-            assert_equal size, io.pos
-            assert_equal io.size, io.pos
-          end
-          assert_equal true, io.in_memory?
-          6.times do |i|
-            io << data
-            size += data.length
-            assert_equal size, io.pos
-            assert_equal io.size, io.pos
-          end
-          assert_equal false, io.in_memory?
-        end
-      end
-    end
-
     context "#read" do
       subject { Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 30) }
 
@@ -237,8 +209,10 @@ module Rufio
 
       should "raise IOError if the IO is finalized" do
         assert_raises(IOError) do
-          subject.finalize
-          subject.write("hello")
+          subject.open do |io|
+            io.finalize
+            subject.write("hello")
+          end
         end
       end
 

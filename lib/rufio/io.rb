@@ -4,7 +4,6 @@ module Rufio
   # fall back to storing the data in a Tempfile once the data reaches a minimum
   # size.
   class IO
-
     class << self
       # Default max in memory size is 250MB.
       DEFAULT_MAX_IN_MEMORY_SIZE = 250_000_000
@@ -55,9 +54,8 @@ module Rufio
         self.class.default_max_in_memory_size
 
       @in_memory = true
-      @open = false
-      @finalized = false
-      @io = StringIO.new
+      @final = @open = false
+      @io = ""
       @size = 0
       open(&Proc.new) if block_given?
     end
@@ -67,7 +65,7 @@ module Rufio
     # @return [Boolean] Returns true if the IO has been finalized and false if
     #   the IO has not yet been finalized.
     def final?
-      !!@finalized
+      !!@final
     end
 
     # Finalizes the IO object such that no further writes are allowed.
@@ -75,10 +73,10 @@ module Rufio
     # @raise [IOError] when the stream is closed or already final.
     # @return [true] Returns true when successful.
     def finalize
-      raise IOError, "closed stream" if !open?
-      raise IOError, "I/O finalized!" if final?
-      @io.rewind
-      @finalized = true
+      raise IOError, "closed stream" if !@open
+      raise IOError, "I/O finalized!" if @final
+      @io.rewind if @io.respond_to?(:rewind)
+      @final = true
     end
 
     # Returns a boolean indicating whether or not data written to the IO is
@@ -92,13 +90,13 @@ module Rufio
 
     # Opens the IO object for use.
     def open
-      raise(RuntimeError, "Already open") if open?
+      raise(RuntimeError, "Already open") if @open
       raise(ArgumentError, "Block required!") unless block_given?
       @open = true
       yield self
     ensure
       @open = false
-      @io.close if !in_memory?
+      @io.close if !@in_memory
     end
 
     # Returns a boolean indicating whether or not the IO object is open for use.
@@ -109,22 +107,15 @@ module Rufio
       !!@open
     end
 
-    # Returns the position of the IO cursor.
-    #
-    # @return [Integer] The byte offset of the IO cursor's position.
-    def pos
-      raise IOError, "closed stream" if !open?
-      @io.pos
-    end
-
     # Reads data from the IO object. All arguments are passed to the underlying
     # IO object.
     #
     # @raise [IOError] when the IO is closed or is not final.
-    # @return [String] Returns the requested read.
+    # @return [String] Returns the result of the requested read.
     def read(*args)
-      raise IOError, "closed stream" if !open?
-      raise IOError, "I/O not finalized!" if !final?
+      raise IOError, "closed stream" if !@open
+      raise IOError, "I/O not finalized!" if !@final
+      @io = StringIO.new(@io) if in_memory? && !@io.respond_to?(:read)
       @io.read(*args)
     end
 
@@ -133,16 +124,20 @@ module Rufio
     # @param [String] chunk The data to write to the IO object.
     # @return [String] The provided chunk of data is returned.
     def write(chunk)
-      raise IOError, "closed stream" if !open?
-      raise IOError, "I/O finalized!" if final?
+      raise IOError, "closed stream" if !@open
+      raise IOError, "I/O finalized!" if @final
       @size += chunk.bytesize
-      update_io
+      # Worth noting that size always appears larger during this check than it
+      # is in reality since the size is updated prior to writing out the data to
+      # ensure that the amount of data stored in RAM doesn't exceed the maximum
+      # in memory size.
+      update_io if @in_memory && @size > @max_in_memory_size
       @io << chunk
       chunk
     end
     alias_method(:<<, :write)
 
-    protected
+    private
 
     # Helper to create and unlink the Tempfile.
     def create_tempfile
@@ -151,26 +146,12 @@ module Rufio
       io
     end
 
-    # Helper to transfer the written data from the in-memory IO object to the
-    # Tempfile IO object.
-    def transfer_io(src_io, dest_io)
-      src_io.rewind
-      dest_io << src_io.read
-      true
-    end
-
     # Helper called before each write to check if the IO object should be
     # transitioned from in-memory to on disk.
     def update_io
-      # Worth noting that size always appears larger during this check than it
-      # is in reality since the size is updated prior to writing out the data to
-      # ensure that the amount of data stored in RAM doesn't exceed the maximum
-      # in memory size.
-      return if !in_memory? || size <= max_in_memory_size
-      @in_memory = false
       io = create_tempfile
-      transfer_io(@io, io)
-      @io = io
+      @io = (io << @io; io)
+      @in_memory = false
       nil
     end
   end
