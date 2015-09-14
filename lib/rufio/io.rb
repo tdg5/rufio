@@ -3,7 +3,7 @@ module Rufio
   # A library for streaming I/O that prefers to store data in memory, but will
   # fall back to storing the data in a Tempfile once the data reaches a minimum
   # size.
-  class IO
+  class IO < SimpleDelegator
     class << self
       # Default max in memory size is 250MB.
       DEFAULT_MAX_IN_MEMORY_SIZE = 250_000_000
@@ -22,9 +22,6 @@ module Rufio
     # The maximum amount of data in bytes that will be retained before writing
     # subsequent data to disk.
     attr_reader :max_in_memory_size
-
-    # The size in bytes of the IO object.
-    attr_reader :size
 
     # Creates a new instance of the `Rufio::IO` class. Other than the
     # `max_in_memory_size` option, all other arguments are used to initialize a
@@ -54,9 +51,9 @@ module Rufio
         self.class.default_max_in_memory_size
 
       @in_memory = true
-      @open = false
       @io = StringIO.new
       @size = 0
+      super(@io)
       open(&Proc.new) if block_given?
     end
 
@@ -71,38 +68,9 @@ module Rufio
 
     # Opens the IO object for use.
     def open
-      raise(RuntimeError, "Already open") if @open
-      raise(ArgumentError, "Block required!") unless block_given?
-      @open = true
       yield self
     ensure
-      @open = false
-      @io.close if !@in_memory
-    end
-
-    # Returns a boolean indicating whether or not the IO object is open for use.
-    #
-    # @return [Boolean] Returns true if the IO object is open and returns false
-    #   if the IO is not open.
-    def open?
-      !!@open
-    end
-
-    # Reads data from the IO object. All arguments are passed to the underlying
-    # IO object.
-    #
-    # @return [String] Returns the result of the requested read.
-    def read(*args)
-      raise IOError, "closed stream" if !@open
-      @io = StringIO.new(@io) if in_memory? && !@io.respond_to?(:read)
-      @io.read(*args)
-    end
-
-    # Rewinds the underlying I/O object.
-    #
-    # @return [Integer] Returns the byte offset to which the IO was rewound.
-    def rewind
-      @io.rewind
+      @io.close unless @io.closed?
     end
 
     # Appends the given chunk of data to the IO object.
@@ -110,7 +78,6 @@ module Rufio
     # @param [String] chunk The data to write to the IO object.
     # @return [String] The provided chunk of data is returned.
     def write(chunk)
-      raise IOError, "closed stream" if !@open
       @size += chunk.bytesize
       # Worth noting that size always appears larger during this check than it
       # is in reality since the size is updated prior to writing out the data to
@@ -137,6 +104,7 @@ module Rufio
       io = create_tempfile
       rewind
       @io = (io << @io.read; io)
+      __setobj__(@io)
       @in_memory = false
       nil
     end

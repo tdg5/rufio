@@ -63,25 +63,44 @@ module Rufio
       subject { Subject.new(DUMMY_BASENAME) }
 
       should "raise error if no block is given" do
-        assert_raises(ArgumentError) { subject.open }
-      end
-
-      should "raise error if the IO is already open" do
-        assert_raises(RuntimeError) { subject.open { |io| io.open } }
+        assert_raises(LocalJumpError) { subject.open }
       end
 
       should "open the io and yield it to the provided block" do
         subject.open do |io|
           assert_equal subject, io
-          assert_equal true, subject.open?
+          assert_equal false, subject.closed?
         end
       end
 
-      should "cause #open? to return true" do
-        subject.open { |io| assert_equal true, subject.open? }
+      should "not close IO if already closed" do
+        # In memory
+        instance = Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 6)
+        instance.open do |io|
+          io << "hello"
+          io.close
+          io.expects(:close).never
+        end
+
+        # Tempfile
+        Tempfile.open(DUMMY_BASENAME) do |tmpfile|
+          Tempfile.expects(:new).with(DUMMY_BASENAME, Dir.tmpdir, {}).returns(tmpfile)
+          instance = Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 1)
+          instance.open do |io|
+            io << "hello"
+            io.close
+            tmpfile.expects(:close).never
+          end
+        end
       end
 
-      should "ensure an open Tempfile is closed" do
+      should "ensure the IO is closed" do
+        # In memory
+        instance = Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 6)
+        instance.open { |io| io << "hello" }
+        assert_equal true, instance.closed?
+
+        # Tempfile
         Tempfile.open(DUMMY_BASENAME) do |tmpfile|
           Tempfile.expects(:new).with(DUMMY_BASENAME, Dir.tmpdir, {}).returns(tmpfile)
           instance = Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 1)
@@ -107,23 +126,16 @@ module Rufio
       end
     end
 
-    context "#open?" do
-      subject { Subject.new(DUMMY_BASENAME) }
-
-      should "return true when the IO is open" do
-        subject.open { |io| assert_equal true, subject.open? }
-      end
-
-      should "return false when the IO is not open" do
-        assert_equal false, subject.open?
-      end
-    end
-
     context "#read" do
       subject { Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 30) }
 
       should "raise IOError if the IO isn't open" do
-        assert_raises(IOError) { subject.read }
+        assert_raises(IOError) do
+          subject.open do |io|
+            io << "z" * 40
+          end
+          subject.read
+        end
       end
 
       should "read the specified number of bytes when in memory" do
@@ -149,10 +161,6 @@ module Rufio
 
     context "#write" do
       subject { Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 50) }
-
-      should "raise IOError if the IO isn't open" do
-        assert_raises(IOError) { subject.write("hello") }
-      end
 
       should "write the chunk of data to the io object" do
         chunk = "a" * 25
