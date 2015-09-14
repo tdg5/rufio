@@ -1,0 +1,41 @@
+# Methods only found on Tempfile:
+- :advise
+- :atime
+- :autoclose=
+- :autoclose?
+- :binmode?
+- :chmod
+- :chown
+- :close_on_exec=
+- :close_on_exec?
+- :cooked
+- :cooked!
+- :ctime
+- :echo=
+- :echo?
+- :fdatasync
+- :flock
+- :iflush
+- :ioctl
+- :ioflush
+- :lstat
+- :mtime
+- :noecho
+- :oflush
+- :path
+- :raw
+- :raw!
+- :stat
+- :sysseek
+- :to_i
+- :to_io
+- :to_path
+- :winsize
+- :winsize=
+
+# Methods only found on StringIO:
+- :closed_read?
+- :closed_write?
+- :length
+- :string
+- :string=
