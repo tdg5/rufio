@@ -43,60 +43,15 @@ module Rufio
       end
     end
 
-    context "#final?" do
-      subject { Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 50) }
-
-      should "return true when the IO is finalized" do
-        subject.open do |io|
-          io << "a"
-          io.finalize
-          assert_equal true, io.final?
-        end
-      end
-
-      should "return false when the IO is not finalized" do
-        subject.open do |io|
-          io << "a"
-          assert_equal false, io.final?
-        end
-      end
-    end
-
-    context "#finalize" do
-      subject { Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 5) }
-
-      should "rewind a tempfile backed IO" do
-        Tempfile.open(DUMMY_BASENAME) do |tmpfile|
-          subject.open do |io|
-            chunk = "aaaa" * 2
-            io << chunk
-            io.finalize
-            assert_equal 0, tmpfile.pos
-          end
-        end
-      end
-
-      should "cause #final? to return true" do
-        subject.open do |io|
-          io << "a"
-          io.finalize
-          assert_equal true, io.final?
-        end
-      end
-    end
-
     context "#in_memory?" do
       should "return true only after data is being written to disk" do
         Tempfile.open(DUMMY_BASENAME) do |tmpfile|
           instance = Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 30)
           instance.open do |io|
-            instance.expects(:create_tempfile).never
             5.times { io << "hello" }
             assert_equal true, io.in_memory?
             io << "hello"
             assert_equal true, io.in_memory?
-
-            instance.expects(:create_tempfile).returns(tmpfile)
             io << "hello"
             assert_equal false, io.in_memory?
           end
@@ -171,20 +126,12 @@ module Rufio
         assert_raises(IOError) { subject.read }
       end
 
-      should "raise IOError if the IO isn't finalized" do
-        assert_raises(IOError) do
-          subject.open do |io|
-            io.read
-          end
-        end
-      end
-
       should "read the specified number of bytes when in memory" do
         data = "hello" * 4
         subject.open do |io|
           io << data
           assert_equal true, io.in_memory?
-          io.finalize
+          io.rewind
           assert_equal data[0..19], io.read(20)
         end
       end
@@ -194,7 +141,7 @@ module Rufio
         subject.open do |io|
           io << data
           assert_equal false, io.in_memory?
-          io.finalize
+          io.rewind
           assert_equal data[0..19], io.read(20)
         end
       end
@@ -207,20 +154,11 @@ module Rufio
         assert_raises(IOError) { subject.write("hello") }
       end
 
-      should "raise IOError if the IO is finalized" do
-        assert_raises(IOError) do
-          subject.open do |io|
-            io.finalize
-            subject.write("hello")
-          end
-        end
-      end
-
       should "write the chunk of data to the io object" do
         chunk = "a" * 25
         subject.open do |io|
           io.write(chunk)
-          io.finalize
+          io.rewind
           assert_equal chunk, io.read
         end
       end
@@ -231,12 +169,11 @@ module Rufio
         Tempfile.open(DUMMY_BASENAME) do |tmpfile|
           instance = Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 30)
           instance.open do |io|
-            instance.expects(:create_tempfile).never
             6.times { io << "hello" }
+            assert_equal true, io.in_memory?
             assert_equal io.size, io.max_in_memory_size
-
-            instance.expects(:create_tempfile).returns(tmpfile)
             2.times { io << "hello" }
+            assert_equal false, io.in_memory?
           end
         end
       end
@@ -283,11 +220,11 @@ module Rufio
         Tempfile.open(DUMMY_BASENAME) do |tmpfile|
           instance = Subject.new(DUMMY_BASENAME, nil, :max_in_memory_size => 30)
           instance.open do |io|
-            instance.expects(:create_tempfile).never
             6.times { io << "hello" }
-            instance.expects(:create_tempfile).returns(tmpfile)
+            assert_equal true, io.in_memory?
             2.times { io << "hello" }
-            io.finalize
+            assert_equal false, io.in_memory?
+            io.rewind
             assert_equal("hello" * 8, io.read)
           end
         end

@@ -54,29 +54,10 @@ module Rufio
         self.class.default_max_in_memory_size
 
       @in_memory = true
-      @final = @open = false
-      @io = ""
+      @open = false
+      @io = StringIO.new
       @size = 0
       open(&Proc.new) if block_given?
-    end
-
-    # Returns a boolean indicating whether the IO object has been finalized.
-    #
-    # @return [Boolean] Returns true if the IO has been finalized and false if
-    #   the IO has not yet been finalized.
-    def final?
-      !!@final
-    end
-
-    # Finalizes the IO object such that no further writes are allowed.
-    #
-    # @raise [IOError] when the stream is closed or already final.
-    # @return [true] Returns true when successful.
-    def finalize
-      raise IOError, "closed stream" if !@open
-      raise IOError, "I/O finalized!" if @final
-      @io.rewind if @io.respond_to?(:rewind)
-      @final = true
     end
 
     # Returns a boolean indicating whether or not data written to the IO is
@@ -110,13 +91,18 @@ module Rufio
     # Reads data from the IO object. All arguments are passed to the underlying
     # IO object.
     #
-    # @raise [IOError] when the IO is closed or is not final.
     # @return [String] Returns the result of the requested read.
     def read(*args)
       raise IOError, "closed stream" if !@open
-      raise IOError, "I/O not finalized!" if !@final
       @io = StringIO.new(@io) if in_memory? && !@io.respond_to?(:read)
       @io.read(*args)
+    end
+
+    # Rewinds the underlying I/O object.
+    #
+    # @return [Integer] Returns the byte offset to which the IO was rewound.
+    def rewind
+      @io.rewind
     end
 
     # Appends the given chunk of data to the IO object.
@@ -125,7 +111,6 @@ module Rufio
     # @return [String] The provided chunk of data is returned.
     def write(chunk)
       raise IOError, "closed stream" if !@open
-      raise IOError, "I/O finalized!" if @final
       @size += chunk.bytesize
       # Worth noting that size always appears larger during this check than it
       # is in reality since the size is updated prior to writing out the data to
@@ -150,7 +135,8 @@ module Rufio
     # transitioned from in-memory to on disk.
     def update_io
       io = create_tempfile
-      @io = (io << @io; io)
+      rewind
+      @io = (io << @io.read; io)
       @in_memory = false
       nil
     end
