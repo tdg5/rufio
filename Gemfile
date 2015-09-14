@@ -6,6 +6,8 @@ group :doc do
   gem "yard"
 end
 
+gem "benchmark-ips"
+
 group :test do
   gem "coveralls", :require => false
   gem "guard"
